@@ -1,0 +1,4 @@
+import {W,H,rnd} from '../core.js';import {weather,rain,rainbows} from '../state.js';
+export function startRain(u){weather.raining=true;weather.timer=0;weather.rainbow={x:u.x,y:u.y,ui:u.ui};rain.length=0;for(let i=0;i<200;i++)rain.push({x:rnd(0,W),y:rnd(-H,H),speed:rnd(600,1100),length:rnd(10,22),opacity:rnd(.3,.8)})}
+export function updateWeather(dt){if(!weather.raining)return;weather.timer+=dt*1000;for(const r of rain){r.y+=r.speed*dt;if(r.y>H+30)r.y=-rnd(20,200)}if(weather.timer>=weather.duration){weather.raining=false;if(weather.rainbow)rainbows.push({x:weather.rainbow.x,y:weather.rainbow.y,ui:weather.rainbow.ui,size:Math.max(280,H*.55),life:12000,maxLife:12000});weather.rainbow=null}}
+export function updateRainbows(dt){for(let i=rainbows.length-1;i>=0;i--){rainbows[i].life-=dt*1000;if(rainbows[i].life<=0)rainbows.splice(i,1)}}
