@@ -13,10 +13,5 @@ enjoy.
 ## Run
 ```powershell
 npm install
-npm run dev
-```
-
-## Build to ./release/index.html
-```powershell
-npm run release
+npm run build
 ```
