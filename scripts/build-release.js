@@ -1,83 +1,136 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { build } from 'vite'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const ROOT = path.resolve(__dirname, '..')
 const DIST = path.join(ROOT, 'dist')
-const RELEASE = path.join(ROOT, 'release')
 
 const DIST_HTML = path.join(DIST, 'index.html')
-const RELEASE_HTML = path.join(RELEASE, 'index.html')
 
 console.log('')
 console.log('========================================')
-console.log(' Thunder Unicorn 13 - Release Builder')
+console.log(' Thunder Unicorn 13 - Build')
 console.log('========================================')
 console.log('')
 
-// --------------------------------------------------
-// 1. 检查 Vite 构建结果
-// --------------------------------------------------
+// ==================================================
+// 1. 清理 dist
+// ==================================================
+
+if (fs.existsSync(DIST)) {
+    fs.rmSync(DIST, {
+        recursive: true,
+        force: true
+    })
+}
+
+console.log('✓ 已清理 dist')
+
+// ==================================================
+// 2. 调用 Vite 构建源码
+// ==================================================
+
+console.log('✓ 正在执行 Vite 构建...')
+
+try {
+    await build({
+        root: ROOT,
+        configFile: path.join(ROOT, 'vite.config.js'),
+        build: {
+            outDir: DIST,
+            emptyOutDir: true
+        }
+    })
+} catch (error) {
+    console.error('')
+    console.error('❌ Vite 构建失败')
+    console.error(error)
+    process.exit(1)
+}
+
+console.log('✓ Vite 构建完成')
+
+// ==================================================
+// 3. 检查 index.html
+// ==================================================
 
 if (!fs.existsSync(DIST_HTML)) {
-    console.error('❌ 找不到 dist/index.html')
-    console.error('   请先执行：npm run build')
+    console.error('')
+    console.error('❌ Vite 没有生成 dist/index.html')
     process.exit(1)
 }
 
 console.log('✓ 找到 dist/index.html')
 
-// --------------------------------------------------
-// 2. 读取 Vite 生成的 HTML
-// --------------------------------------------------
+// ==================================================
+// 4. 读取 HTML
+// ==================================================
 
 let html = fs.readFileSync(DIST_HTML, 'utf8')
 
-// --------------------------------------------------
-// 3. 将外部 CSS 内嵌进 HTML
-// --------------------------------------------------
+// ==================================================
+// 5. 内嵌 CSS
+// ==================================================
 
-const cssRegex = /<link[^>]+href=["']([^"']+\.css)["'][^>]*>/gi
+const cssRegex =
+    /<link[^>]+href=["']([^"']+\.css)["'][^>]*>/gi
+
+let match
 
 const cssFiles = []
-let match
 
 while ((match = cssRegex.exec(html)) !== null) {
     cssFiles.push(match[1])
 }
 
 for (const cssUrl of cssFiles) {
-    const relativePath = cssUrl.replace(/^\.?\//, '')
-    const cssPath = path.join(DIST, relativePath)
+    const relativePath = cssUrl
+        .replace(/^\.?\//, '')
+
+    const cssPath = path.join(
+        DIST,
+        relativePath
+    )
 
     if (!fs.existsSync(cssPath)) {
         console.warn(`⚠️ CSS 文件不存在：${cssPath}`)
         continue
     }
 
-    const css = fs.readFileSync(cssPath, 'utf8')
-
-    const styleTag = `<style>\n${css}\n</style>`
-
-    html = html.replace(
-        new RegExp(
-            `<link[^>]+href=["']${escapeRegExp(cssUrl)}["'][^>]*>`,
-            'i'
-        ),
-        styleTag
+    const css = fs.readFileSync(
+        cssPath,
+        'utf8'
     )
 
-    console.log(`✓ 内嵌 CSS：${relativePath}`)
+    const escapedUrl =
+        escapeRegExp(cssUrl)
+
+    const linkRegex =
+        new RegExp(
+            `<link[^>]+href=["']${escapedUrl}["'][^>]*>`,
+            'i'
+        )
+
+    html = html.replace(
+        linkRegex,
+        `<style>\n${css}\n</style>`
+    )
+
+    console.log(
+        `✓ 已内嵌 CSS：${relativePath}`
+    )
 }
 
-// --------------------------------------------------
-// 4. 将外部 JS 内嵌进 HTML
-// --------------------------------------------------
+// ==================================================
+// 6. 内嵌 JS
+// ==================================================
 
-const jsRegex = /<script([^>]+)src=["']([^"']+\.js)["']([^>]*)><\/script>/gi
+const jsRegex =
+    /<script([^>]+)src=["']([^"']+\.js)["']([^>]*)><\/script>/gi
 
 const jsFiles = []
 
@@ -91,81 +144,105 @@ while ((match = jsRegex.exec(html)) !== null) {
 }
 
 for (const script of jsFiles) {
-    const relativePath = script.src.replace(/^\.?\//, '')
-    const jsPath = path.join(DIST, relativePath)
+    const relativePath =
+        script.src.replace(/^\.?\//, '')
+
+    const jsPath =
+        path.join(DIST, relativePath)
 
     if (!fs.existsSync(jsPath)) {
-        console.warn(`⚠️ JS 文件不存在：${jsPath}`)
+        console.warn(
+            `⚠️ JS 文件不存在：${jsPath}`
+        )
         continue
     }
 
-    const js = fs.readFileSync(jsPath, 'utf8')
+    const js = fs.readFileSync(
+        jsPath,
+        'utf8'
+    )
 
-    // Vite 输出的是模块代码。
-    // 这里保留 type="module"，让浏览器按照模块方式执行。
     const scriptTag =
         `<script type="module">\n` +
         `${js}\n` +
         `</script>`
 
-    html = html.replace(script.full, scriptTag)
+    html = html.replace(
+        script.full,
+        scriptTag
+    )
 
-    console.log(`✓ 内嵌 JS：${relativePath}`)
+    console.log(
+        `✓ 已内嵌 JS：${relativePath}`
+    )
 }
 
-// --------------------------------------------------
-// 5. 清理 release 目录
-// --------------------------------------------------
+// ==================================================
+// 7. 写回 dist/index.html
+// ==================================================
 
-if (fs.existsSync(RELEASE)) {
-    fs.rmSync(RELEASE, {
+fs.writeFileSync(
+    DIST_HTML,
+    html,
+    'utf8'
+)
+
+console.log('✓ 已生成单文件 HTML')
+
+// ==================================================
+// 8. 删除其他 Vite 构建产物
+// ==================================================
+
+const files = fs.readdirSync(DIST)
+
+for (const file of files) {
+    if (file === 'index.html') {
+        continue
+    }
+
+    const target = path.join(
+        DIST,
+        file
+    )
+
+    fs.rmSync(target, {
         recursive: true,
         force: true
     })
 }
 
-fs.mkdirSync(RELEASE, {
-    recursive: true
-})
+// ==================================================
+// 9. 输出结果
+// ==================================================
 
-// --------------------------------------------------
-// 6. 写入最终 HTML
-// --------------------------------------------------
-
-fs.writeFileSync(
-    RELEASE_HTML,
-    html,
-    'utf8'
-)
-
-// --------------------------------------------------
-// 7. 输出结果
-// --------------------------------------------------
-
-const stats = fs.statSync(RELEASE_HTML)
+const stats =
+    fs.statSync(DIST_HTML)
 
 console.log('')
 console.log('========================================')
-console.log('✓ Release 构建完成')
+console.log('✓ Build 构建完成')
 console.log('========================================')
 console.log('')
-console.log(`输出文件：`)
-console.log(`  ${RELEASE_HTML}`)
+console.log('最终文件：')
+console.log(`  ${DIST_HTML}`)
 console.log('')
 console.log(`文件大小：${formatBytes(stats.size)}`)
 console.log('')
-console.log('现在可以直接双击：')
-console.log('  release/index.html')
+console.log('dist 目录现在只包含：')
+console.log('  index.html')
 console.log('')
 console.log('========================================')
 console.log('')
 
-// --------------------------------------------------
+// ==================================================
 // 工具函数
-// --------------------------------------------------
+// ==================================================
 
 function escapeRegExp(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return string.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        '\\$&'
+    )
 }
 
 function formatBytes(bytes) {
